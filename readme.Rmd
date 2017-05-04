@@ -1,0 +1,205 @@
+---
+title: "Human Activity Recognition Using Smartphones"
+author: "Alex Kodess"
+date: "May 4, 2017"
+output: html_document
+---
+amkodess@gmail.com
+
+### Getting the Data Set
+
+The data set 
+**Human Activity Recognition Using Smartphones** is downloaded at  http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones. The zip file is then unpacked. 
+
+The file `run_analysis.R` needs to be in the same folder as the unpacked dataset. 
+
+### Appropriately labeling the data set with descriptive variable names
+
+The 561 parameters, 
+such as 
+`tBodyAcc-mean()-X` 
+or 
+`fBodyAccJerk-meanFreq()-Z` 
+ are stored in the file 
+`UCI HAR Dataset/features.txt`, which is read into 
+`param_names` as a table.
+
+~~~
+param_names <- read_table2(
+                                file = "UCI HAR Dataset/features.txt", 
+                                col_types = "ic", 
+                                col_names = c("id", "par_name")
+                                )
+~~~
+
+These 561 parameters becomes the names of the columns when 
+the training and the test sets are read from the files 
+`UCI HAR Dataset/train/X_train.txt` 
+and 
+`UCI HAR Dataset/test/X_test.txt`
+
+~~~
+training_set <- read_table2(
+                                file = "UCI HAR Dataset/train/X_train.txt", 
+                                col_names = param_names$par_name
+                                )
+~~~
+~~~
+test_set <- read_table2(
+                                file = "UCI HAR Dataset/test/X_test.txt",
+                                col_names = param_names$par_name
+                                )
+~~~
+
+### Addiging activity codes and subject codes
+
+The files 
+`test/y_test.txt` 
+and 
+`train/y_train.txt` 
+contain codes of acitivities 
+(integers 1 through 6). 
+(The legend for these is in 
+`activity_labels.txt`.) 
+We read them as tables.
+
+~~~
+train_set_label <- read_table2(
+                                file = "UCI HAR Dataset/train/y_train.txt", 
+                                col_types = "i",
+                                col_names = "label"
+                                )
+~~~
+~~~
+test_set_label <- read_table2(
+                                file = "UCI HAR Dataset/test/y_test.txt", 
+                                col_types = "i",
+                                col_names = "label"
+                                )
+~~~
+
+Likewise, the files 
+`test/subject_test.txt` 
+and 
+`train/subject_train.txt` 
+containes code of the 30 individuals who 
+participated in the project. 
+We read them as tables.
+
+~~~
+train_set_subject <- read_table2(
+                                file = "UCI HAR Dataset/train/subject_train.txt", 
+                                col_types = "i",
+                                col_names = "subject"
+                                )
+~~~
+~~~
+test_set_subject <- read_table2(
+                                file = "UCI HAR Dataset/test/subject_test.txt", 
+                                col_types = "i",
+                                col_names = "subject"
+                                )
+~~~
+
+We finally the columns for activity codes and subject codes to 
+each of the two data sets using 
+`dplyr::bind_cols()`.
+
+~~~
+training_set <- training_set %>% 
+                bind_cols(train_set_label) %>% 
+                bind_cols(train_set_subject)
+~~~
+
+~~~
+test_set <- test_set %>% 
+            bind_cols(test_set_label) %>%
+            bind_cols(test_set_subject)
+~~~
+
+### Merging the two data sets
+
+We append the rows of 
+`test_set` 
+to the rows of 
+`training_set` 
+using `dplyr::bind_rows()`. A new data set is produced called 
+`output`.
+
+~~~
+output <- bind_rows(training_set, test_set)
+~~~
+
+### Extracting columns with means and standard deviations 
+
+We use `dplyr::select()` along with `macthes()` to extract columns 
+containing means and standard deviations for each measurement. 
+The columns `label` and `subject` with label and subject codes 
+are also retained.
+
+~~~
+output <- output %>%
+                select(
+                        matches("[Mm]ean|std|label|subject")
+                ) 
+~~~
+
+### Adding descriptive names to activities
+
+We use `dplyr:mutate` and `dplyr:if_else()` 
+to add a new column with descriptive names of activities.
+
+~~~
+output <- output %>%
+          mutate(
+                activity = if_else(label == 1, "walking",
+                           if_else(label == 2, "walking_upstairs",
+                           if_else(label == 3, "walking_downstairs",
+                           if_else(label == 4, "sitting",
+                           if_else(label == 5, "standing","laying")))))
+~~~
+
+### Averaging each variable for each activity and each subject 
+
+We use `dplyr::group_by()` and `dplyr::summarise_all`. 
+The column `label` is no longer needed. 
+As there are 30 volunteers and 6, this produces a table with 180 observations. 
+A new tidy data set is called `final_output`.
+
+~~~
+final_output <- output %>%
+                select(-label) %>%
+                group_by(subject, activity) %>%
+                summarise_all(mean)
+~~~
+
+### Preview
+
+A portion of the `final_output` with th first 8 rows and 5 columns is produced using 
+`knitr::kable()`:
+
+~~~
+kable(final_output[1:8, 1:5])
+~~~
+
+| subject|activity           | tBodyAcc-mean()-X| tBodyAcc-mean()-Y| tBodyAcc-mean()-Z|
+|-------:|:------------------|-----------------:|-----------------:|-----------------:|
+|       1|laying             |         0.2215982|        -0.0405140|        -0.1132036|
+|       1|sitting            |         0.2612376|        -0.0013083|        -0.1045442|
+|       1|standing           |         0.2789176|        -0.0161376|        -0.1106018|
+|       1|walking            |         0.2773308|        -0.0173838|        -0.1111481|
+|       1|walking_downstairs |         0.2891883|        -0.0099185|        -0.1075662|
+|       1|walking_upstairs   |         0.2554617|        -0.0239531|        -0.0973020|
+|       2|laying             |         0.2813734|        -0.0181587|        -0.1072456|
+|       2|sitting            |         0.2770874|        -0.0156880|        -0.1092183|
+
+### Writing to a file
+
+~~~
+write.table(
+                final_output, 
+                file = "final_output.txt", 
+                quote = FALSE,
+                row.names = FALSE
+                )
+~~~
